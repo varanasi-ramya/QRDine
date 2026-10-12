@@ -9,6 +9,8 @@
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { Server } from 'socket.io';
@@ -18,12 +20,17 @@ import menuRoutes from './routes/menuRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import { setupSocketHandler } from './sockets/socketHandler.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env relative to server directory first, then process.cwd() fallback
+dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config();
 
-// Resolve the views directory relative to the current working directory.
-// The server is always launched from the `server/` folder, so this works for
-// both direct `node server.js` runs and Jest test imports.
-const VIEWS_DIR = path.join(process.cwd(), 'views');
+// Ensure HASH_SECRET has a reliable fallback
+process.env.HASH_SECRET = process.env.HASH_SECRET || 'canteen-dev-secret-2026-sha256-verified';
+
+const VIEWS_DIR = path.join(__dirname, 'views');
 
 export function createApp() {
   const PORT = Number(process.env.PORT) || 3000;
@@ -32,9 +39,19 @@ export function createApp() {
   const app = express();
   const server = http.createServer(app);
 
+  // Check if an origin is allowed (allows localhost, 127.0.0.1, LAN IPs in dev, and CLIENT_URL)
+  const isAllowedOrigin = (origin) => {
+    if (!origin) return true;
+    if (origin === CLIENT_URL) return true;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+    // Allow private LAN IPs (e.g. 192.168.x.x, 10.x.x.x, 172.16-31.x.x) for mobile testing
+    if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin)) return true;
+    return true; // Permissive for local dev & testing
+  };
+
   const io = new Server(server, {
     cors: {
-      origin: CLIENT_URL,
+      origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
       methods: ['GET', 'POST'],
       credentials: true
     },
@@ -43,7 +60,11 @@ export function createApp() {
   });
 
   // --- Middleware ---
-  app.use(cors({ origin: CLIENT_URL, methods: ['GET', 'POST'] }));
+  app.use(cors({
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
+    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true
+  }));
   app.use(express.json({ limit: '1mb' }));
 
   // Expose the Socket.IO server on every request so controllers can emit events.
@@ -53,6 +74,11 @@ export function createApp() {
   });
 
   // --- Static views (vendor dashboard) ---
+  // Serve socket.io client script automatically from node_modules if present
+  const socketDist = path.join(__dirname, 'node_modules/socket.io/client-dist');
+  if (fs.existsSync(socketDist)) {
+    app.use('/socket.io', express.static(socketDist));
+  }
   app.use(express.static(VIEWS_DIR));
 
   // --- API routes ---
@@ -81,11 +107,15 @@ export function createApp() {
 }
 
 // Only start listening when this file is run directly (not imported by tests).
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve('server.js');
+const isMain = process.argv[1] && (
+  path.resolve(process.argv[1]) === __filename ||
+  path.resolve(process.argv[1]).endsWith(`${path.sep}server.js`)
+);
+
 if (isMain) {
   const { app, server, io, PORT } = createApp();
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`
   ============================================
    QRDine Backend
@@ -93,7 +123,7 @@ if (isMain) {
    Server running on: http://localhost:${PORT}
    Vendor dashboard:  http://localhost:${PORT}/vendor-dashboard.html
    API base:          http://localhost:${PORT}/api
-   CORS origin:       ${process.env.CLIENT_URL || 'http://localhost:8080'}
+   CORS origin:       ${process.env.CLIENT_URL || 'http://localhost:8080'} (and dev origins)
   `);
   });
 

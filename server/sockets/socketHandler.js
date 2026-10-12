@@ -8,12 +8,13 @@
  *   - vendor_main      : the vendor kitchen display screen.
  *
  * Events (server -> client):
- *   - order_status   : current order state, emitted on join for reconnect recovery.
- *   - payment_verified : emitted to the order room after a successful payment.
- *   - new_order_alert  : emitted to vendor_main for every newly paid order.
+ *   - order_status        : current order state, emitted on join for reconnect recovery.
+ *   - order_status_update : status transition (PAID -> PREPARING -> READY -> COMPLETED).
+ *   - payment_verified    : emitted to the order room after a successful payment.
+ *   - new_order_alert     : emitted to vendor_main for every newly paid order.
  */
 
-import { getOrder, setOwner, canAccessOrder, listPaidOrders } from '../store/orderStore.js';
+import { getOrder, setOwner, canAccessOrder, listPaidOrders, updateOrderStatus } from '../store/orderStore.js';
 
 export function setupSocketHandler(io) {
   io.on('connection', (socket) => {
@@ -62,6 +63,17 @@ export function setupSocketHandler(io) {
       socket.emit('order_status', orderToStatusPayload(order));
     });
 
+    // --- Status updates from vendor ---
+    socket.on('update_order_status', ({ orderId, status }) => {
+      if (!orderId || !status) return;
+      const order = updateOrderStatus(orderId.trim(), status);
+      if (order) {
+        const payload = orderToStatusPayload(order);
+        io.to(`order_${order.orderId}`).emit('order_status_update', payload);
+        io.to('vendor_main').emit('order_status_update', payload);
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       console.log(`[Socket] Client disconnected: ${socket.id} (${reason})`);
     });
@@ -82,6 +94,7 @@ function orderToStatusPayload(order) {
 function orderToAlertPayload(order) {
   return {
     orderId: order.orderId,
+    status: order.status,
     verificationHash: order.verificationHash,
     items: order.items.map(it => ({ id: it.id, name: it.name, qty: it.qty })),
     totalAmount: order.totalAmount,

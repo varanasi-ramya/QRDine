@@ -16,6 +16,8 @@ import crypto from 'node:crypto';
 export const ORDER_STATUS = {
   PENDING_PAYMENT: 'PENDING_PAYMENT',
   PAID: 'PAID',
+  PREPARING: 'PREPARING',
+  READY: 'READY',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED'
 };
@@ -116,10 +118,18 @@ export function canAccessOrder(orderId, socketId) {
   return order.ownerSocketId === socketId;
 }
 
+export function updateOrderStatus(orderId, newStatus) {
+  const order = orders.get(orderId);
+  if (!order) return null;
+  if (!Object.values(ORDER_STATUS).includes(newStatus)) return null;
+  order.status = newStatus;
+  return order;
+}
+
 export function listPaidOrders() {
   return [...orders.values()]
-    .filter(o => o.status === ORDER_STATUS.PAID)
-    .sort((a, b) => b.paidAt - a.paidAt);
+    .filter(o => o.status !== ORDER_STATUS.PENDING_PAYMENT && o.status !== ORDER_STATUS.CANCELLED)
+    .sort((a, b) => (b.paidAt || b.createdAt) - (a.paidAt || a.createdAt));
 }
 
 export function listOrdersByOwner(socketId) {

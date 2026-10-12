@@ -2,7 +2,7 @@
  * server/views/vendor-dashboard.js
  * Vendor Kitchen Display System (KDS) controller.
  * Connects to the Socket.IO server, joins vendor_main, and renders
- * newly paid orders with their verification codes.
+ * newly paid orders with their verification codes and status transitions.
  */
 
 const SERVER_URL = window.location.origin;
@@ -20,6 +20,14 @@ const emptyStateEl = document.getElementById('empty-state');
 const errorBannerEl = document.getElementById('error-banner');
 
 const seenOrderIds = new Set();
+
+const logoBtn = document.querySelector('.brand-logo-btn');
+if (logoBtn) {
+  logoBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
 
 // --- Connection status indicators ---
 function setStatus(state, text) {
@@ -48,19 +56,46 @@ socket.on('reconnecting', (attempt) => {
 
 // --- Order rendering ---
 socket.on('new_order_alert', (payload) => {
-  // The vendor screen may receive either a single order object or a batch
-  // array (seeded on join). Normalize both.
   const orders = Array.isArray(payload) ? payload : [payload];
 
   orders.forEach((order) => {
     if (!order || !order.orderId) return;
-    if (seenOrderIds.has(order.orderId)) return; // avoid duplicates
+    if (seenOrderIds.has(order.orderId)) {
+      updateExistingCard(order);
+      return;
+    }
     seenOrderIds.add(order.orderId);
 
     if (emptyStateEl) emptyStateEl.style.display = 'none';
     renderOrderCard(order);
   });
 });
+
+socket.on('order_status_update', (order) => {
+  if (!order || !order.orderId) return;
+  updateExistingCard(order);
+});
+
+function updateExistingCard(order) {
+  const card = document.querySelector(`[data-order-id="${order.orderId}"]`);
+  if (!card) {
+    if (emptyStateEl) emptyStateEl.style.display = 'none';
+    renderOrderCard(order);
+    return;
+  }
+
+  const statusBadge = card.querySelector('.order-status-badge');
+  if (statusBadge) {
+    statusBadge.textContent = formatStatus(order.status || 'PAID');
+    statusBadge.dataset.status = order.status || 'PAID';
+  }
+
+  const actionsContainer = card.querySelector('.order-actions');
+  if (actionsContainer) {
+    actionsContainer.innerHTML = getStatusActionButtonHtml(order.orderId, order.status || 'PAID');
+    attachActionListeners(card, order.orderId);
+  }
+}
 
 function renderOrderCard(order) {
   const card = document.createElement('article');
@@ -72,10 +107,14 @@ function renderOrderCard(order) {
     .join('');
 
   const time = formatTime(order.paidAt);
+  const currentStatus = order.status || 'PAID';
 
   card.innerHTML = `
     <div class="order-head">
-      <span class="order-id">${escapeHtml(order.orderId)}</span>
+      <div>
+        <span class="order-id">${escapeHtml(order.orderId)}</span>
+        <span class="order-status-badge" data-status="${currentStatus}">${formatStatus(currentStatus)}</span>
+      </div>
       <span class="order-time">${time}</span>
     </div>
 
@@ -86,10 +125,48 @@ function renderOrderCard(order) {
       <span class="verification-code">${escapeHtml(order.verificationHash || '—')}</span>
     </div>
 
-    <p class="order-hint">Compare this code with the student's receipt before handing over the order.</p>
+    <div class="order-actions">
+      ${getStatusActionButtonHtml(order.orderId, currentStatus)}
+    </div>
+
+    <p class="order-hint">Compare code with student receipt before handover.</p>
   `;
 
-  ordersEl.appendChild(card);
+  attachActionListeners(card, order.orderId);
+  ordersEl.prepend(card);
+}
+
+function getStatusActionButtonHtml(orderId, status) {
+  if (status === 'PAID') {
+    return `<button class="btn btn-action btn-preparing" data-action="PREPARING">🍳 Mark as Preparing</button>`;
+  } else if (status === 'PREPARING') {
+    return `<button class="btn btn-action btn-ready" data-action="READY">🔔 Mark Ready for Pickup</button>`;
+  } else if (status === 'READY') {
+    return `<button class="btn btn-action btn-completed" data-action="COMPLETED">✓ Hand Over & Complete</button>`;
+  } else {
+    return `<span class="completed-label">✓ Order Completed</span>`;
+  }
+}
+
+function attachActionListeners(card, orderId) {
+  const btn = card.querySelector('.btn-action');
+  if (!btn) return;
+
+  btn.onclick = () => {
+    const nextStatus = btn.dataset.action;
+    btn.disabled = true;
+    socket.emit('update_order_status', { orderId, status: nextStatus });
+  };
+}
+
+function formatStatus(status) {
+  switch (status) {
+    case 'PAID': return 'Paid';
+    case 'PREPARING': return 'Preparing';
+    case 'READY': return 'Ready for Pickup';
+    case 'COMPLETED': return 'Completed';
+    default: return status;
+  }
 }
 
 // --- Helpers ---

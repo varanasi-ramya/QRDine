@@ -4,15 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QRDine — Vendor Kitchen Display</title>
-  <link rel="stylesheet" href="./styles/vendor-dashboard.css">
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <link rel="icon" type="image/jpeg" href="./logo.jpeg">
+  <link rel="stylesheet" href="vendor-dashboard.css">
+  <script src="/socket.io/socket.io.min.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
+    }
+  </script>
 </head>
 <body>
   <header class="app-header">
     <div class="header-row">
-      <div>
-        <h1>QRDine</h1>
-        <p class="subtitle">Kitchen Display System</p>
+      <div class="header-brand">
+        <a href="#" class="brand-logo-btn" aria-label="QRDine Home" title="QRDine Home">
+          <span class="brand-logo-circle">
+            <img src="./logo.jpeg" alt="QRDine Logo" class="brand-logo-img">
+          </span>
+        </a>
+        <div class="brand-titles">
+          <h1>QRDine</h1>
+          <p class="subtitle">Kitchen Display System</p>
+        </div>
       </div>
       <div class="status" id="status" data-state="disconnected">
         <span class="status-dot"></span>

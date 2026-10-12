@@ -4,7 +4,7 @@
   "description": "Student Self-Order Client Application for qrdine",
   "main": "public/index.html",
   "scripts": {
-    "start": "npx serve public -p 8080"
+    "start": "npx serve public -p 8080 -n"
   },
   "dependencies": {
     "serve": "^14.2.3"

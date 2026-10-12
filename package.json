@@ -1,0 +1,11 @@
+{
+  "name": "qrdine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Campus Canteen Self-Order Platform with real-time Socket.IO and Express",
+  "scripts": {
+    "start:server": "cd server && npm start",
+    "start:client": "cd client && npm start",
+    "test": "cd server && npm test"
+  }
+}

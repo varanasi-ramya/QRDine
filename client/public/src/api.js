@@ -1,18 +1,42 @@
-// Local IP of Server machine (Developer 1)
-// UPDATE THIS to Developer 1's LAN IP when testing on mobile devices over Wi-Fi
-const BASE_URL = 'http://localhost:3000/api';
+import { getServerUrl } from './socket.js';
+
+/**
+ * Returns the base URL for the backend REST API
+ */
+export function getApiBaseUrl() {
+  if (typeof window !== 'undefined') {
+    if (window.QRDINE_API_URL) return window.QRDINE_API_URL;
+    try {
+      const stored = localStorage.getItem('QRDINE_API_URL');
+      if (stored) return stored;
+    } catch (_) {}
+  }
+  return `${getServerUrl()}/api`;
+}
 
 /**
  * Fetch active menu from backend
  */
 export async function fetchMenu() {
+  const url = `${getApiBaseUrl()}/menu`;
   try {
-    const res = await fetch(`${BASE_URL}/menu`);
-    if (!res.ok) throw new Error('Failed to fetch menu');
-    return await res.json();
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Server returned HTTP ${res.status}: ${errText || res.statusText}`);
+    }
+
+    const data = await res.json();
+    return data;
   } catch (error) {
-    console.error('API Error [fetchMenu]:', error);
-    return { success: false, menu: [] };
+    console.error(`API Error [fetchMenu] (${url}):`, error);
+    return { success: false, menu: [], error: error.message };
   }
 }
 
@@ -21,17 +45,26 @@ export async function fetchMenu() {
  * @param {Array<{id: string, qty: number}>} items 
  */
 export async function createOrder(items) {
+  const url = `${getApiBaseUrl()}/order/create`;
   try {
-    const res = await fetch(`${BASE_URL}/order/create`, {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ items })
     });
-    if (!res.ok) throw new Error('Failed to create order');
-    return await res.json();
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Failed to create order (HTTP ${res.status})`);
+    }
+
+    return data;
   } catch (error) {
-    console.error('API Error [createOrder]:', error);
-    return { success: false };
+    console.error(`API Error [createOrder] (${url}):`, error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -40,16 +73,25 @@ export async function createOrder(items) {
  * @param {string} orderId 
  */
 export async function triggerPayment(orderId) {
+  const url = `${getApiBaseUrl()}/order/pay`;
   try {
-    const res = await fetch(`${BASE_URL}/order/pay`, {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ orderId })
     });
-    if (!res.ok) throw new Error('Payment processing failed');
-    return await res.json();
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Payment processing failed (HTTP ${res.status})`);
+    }
+
+    return data;
   } catch (error) {
-    console.error('API Error [triggerPayment]:', error);
-    return { success: false };
+    console.error(`API Error [triggerPayment] (${url}):`, error);
+    return { success: false, error: error.message };
   }
 }
